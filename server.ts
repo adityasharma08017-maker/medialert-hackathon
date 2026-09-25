@@ -12,9 +12,9 @@ import {
 import {
   evaluateRuleBasedTriage,
   TriageResult,
-  } from './data/triageRules.ts';
+} from './data/triageRules.ts';
 
-} from './src/data/triageRules.ts';
+dotenv.config();
 
 dotenv.config();
 
