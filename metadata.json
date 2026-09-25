@@ -1,0 +1,11 @@
+{
+  "name": "Remix MediAlert - Emergency Medical Triage Assistant",
+  "description": "AI-powered medical triage assistant that analyzes symptoms, categorizes urgency into Low, Moderate, Severe, or Critical, identifies nearest hospitals, and provides ambulance availability with clean JSON output.",
+  "requestFramePermissions": [
+    "geolocation",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
