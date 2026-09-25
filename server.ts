@@ -325,10 +325,12 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.resolve(__dirname, 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (_req: Request, res: Response) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    // Serve static assets from the root directory directly
+app.use(express.static(__dirname));
+
+app.get('*', (_req: Request, res: Response) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+
     });
   }
 
