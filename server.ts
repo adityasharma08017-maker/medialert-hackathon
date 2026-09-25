@@ -247,4 +247,6 @@ Strict Requirements:
         console.warn('Gemini triage generation fallback to rule engine:', geminiError);
       }
     }
+  }
+});
 
