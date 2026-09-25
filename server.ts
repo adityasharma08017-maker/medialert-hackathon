@@ -13,7 +13,9 @@ import {
   evaluateRuleBasedTriage,
   TriageResult,
 } from './triageRules.ts';
-dotenv.config();
+
+// Explicit type declaration for severity normalization fallback
+type SeverityLevel = 'Critical' | 'Severe' | 'Moderate' | 'Low';
 
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
@@ -243,102 +245,6 @@ Strict Requirements:
         }
       } catch (geminiError) {
         console.warn('Gemini triage generation fallback to rule engine:', geminiError);
-        // Fallback already assigned
       }
     }
 
-    // 3. Assemble Ambulance Status and Hospital Details
-    let ambulanceAvailabilityText = 'No ambulance required for this severity level';
-    if (topHospital) {
-      if (topHospital.has_ambulance && topHospital.emergency_available) {
-        ambulanceAvailabilityText = `${topHospital.ambulance_status || 'Available'} at ${topHospital.name} (${topHospital.available_ambulances || 3} units on standby · ~${topHospital.ambulance_response_min} mins ETA)`;
-      } else {
-        ambulanceAvailabilityText = 'On-site ambulance currently unlisted; direct 112 dispatch recommended';
-      }
-    }
-
-    const finalResult: TriageResult = {
-      severity: triageAssessment.severity,
-      triage_level: triageAssessment.triage_level,
-      likely_condition: triageAssessment.likely_condition,
-      immediate_actions: triageAssessment.immediate_actions,
-      warning_signs: triageAssessment.warning_signs,
-      hospital_needed: triageAssessment.hospital_needed,
-      ambulance_needed: triageAssessment.ambulance_needed,
-      ambulance_availability: ambulanceAvailabilityText,
-      nearest_hospital: topHospital
-        ? {
-            name: topHospital.name,
-            address: topHospital.address,
-            distance_km: topHospital.distance_km,
-            phone_number: topHospital.emergency_phone,
-            ambulance_available: topHospital.has_ambulance && topHospital.emergency_available,
-            ambulance_response_min: topHospital.ambulance_response_min,
-            specialization: topHospital.specialization,
-            zone: topHospital.zone,
-            type: topHospital.type,
-            available_ambulances: topHospital.available_ambulances,
-            ambulance_status: topHospital.ambulance_status,
-          }
-        : null,
-      alternate_hospitals: alternateHospitals,
-      clarifying_questions: triageAssessment.clarifying_questions,
-      patient_summary: {
-        reported_symptoms: symptoms,
-        reported_location: user_location_name || location,
-        patient_age: patientAge,
-        additional_notes: additional_info || undefined,
-        coordinates:
-          lat !== null && lon !== null
-            ? {
-                latitude: lat,
-                longitude: lon,
-                is_gps_precise: true,
-              }
-            : null,
-      },
-      timestamp: new Date().toISOString(),
-    };
-
-    // Clean JSON format response
-    return res.status(200).json(finalResult);
-  } catch (error: any) {
-    console.error('Triage endpoint internal error:', error);
-    return res.status(500).json({
-      error: 'An unexpected internal error occurred during medical triage.',
-      message: error?.message || String(error),
-    });
-  }
-});
-
-// -------------------------------------------------------------
-// Vite middleware for Dev / Static files for Prod
-// -------------------------------------------------------------
-async function startServer() {
-  const isProduction = process.env.NODE_ENV === 'production';
-
-  if (!isProduction) {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    // Serve static assets from the root directory directly
-app.use(express.static(__dirname));
-
-app.get('*', (_req: Request, res: Response) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-
-    });
-  }
-
-  app.listen(PORT, () => {
-    console.log(`🚑 MediAlert Server active on http://0.0.0.0:${PORT}`);
-  });
-}
-
-startServer().catch((err) => {
-  console.error('Failed to start server:', err);
-});
