@@ -8,15 +8,15 @@ import {
   PRESET_LOCATIONS,
   findNearestHospitals,
   calculateHaversineDistance,
-} from './src/data/hospitalsData.ts';
+} from './hospitalsData.ts';
 import {
   evaluateRuleBasedTriage,
   TriageResult,
-  SeverityLevel,
-} from './src/data/triageRules.ts';
+} from './triageRules.ts';
+
+type SeverityLevel = 'Critical' | 'Severe' | 'Moderate' | 'Low';
 
 dotenv.config();
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -44,10 +44,6 @@ if (process.env.GEMINI_API_KEY) {
 } else {
   console.log('ℹ GEMINI_API_KEY not found in env, using clinical rule engine as primary analyzer');
 }
-
-// -------------------------------------------------------------
-// API Endpoints
-// -------------------------------------------------------------
 
 // Health check
 app.get('/api/health', (_req: Request, res: Response) => {
@@ -91,7 +87,7 @@ app.post('/api/triage', async (req: Request, res: Response) => {
     const lon = longitude !== null && longitude !== undefined ? parseFloat(longitude) : null;
     const patientAge = age ? parseInt(age, 10) : 30;
 
-    // 1. Calculate nearest hospitals from uploaded dataset using exact Haversine calculation
+    // 1. Calculate nearest hospitals
     const nearestHospitals = findNearestHospitals(lat, lon, location, 3);
     const topHospital = nearestHospitals[0] || null;
     const alternateHospitals = nearestHospitals.slice(1).map((h) => ({
@@ -106,12 +102,9 @@ app.post('/api/triage', async (req: Request, res: Response) => {
     }));
 
     // 2. Perform Medical Triage Assessment
-    // First, run deterministic clinical evaluation
     const ruleFallback = evaluateRuleBasedTriage(symptoms, patientAge, additional_info);
-
     let triageAssessment = ruleFallback;
 
-    // If Gemini client is active, use Gemini 3.8 Flash for advanced natural language clinical analysis
     if (geminiClient) {
       try {
         const hospitalContext = nearestHospitals
@@ -134,79 +127,35 @@ ${hospitalContext}
 
 Strict Requirements:
 1. Categorize the severity strictly into one of these 4 conditions:
-   - "Critical": Life-threatening emergencies (e.g., suspected acute coronary syndrome/chest pain, stroke signs FAST, severe respiratory distress, massive hemorrhage, anaphylaxis, unconsciousness).
-   - "Severe": Urgent high-risk emergencies (e.g., deep/extensive burns, compound fractures, acute abdomen, suspected poisoning, severe allergic reactions).
-   - "Moderate": Urgent care conditions needing prompt medical evaluation within hours (e.g., high persistent fever, moderate lacerations needing sutures, acute dehydration, severe sprains).
-   - "Low": Minor, self-limiting issues suitable for primary clinic or home management (e.g., mild cold, minor abrasion, uncomplicated mild headache).
-2. Provide immediate first-aid actions (specific and evidence-based).
-3. Provide critical red-flag warning signs that indicate urgent deterioration.
-4. Specify clarifying clinical questions.
-5. Determine whether hospital visit and ambulance dispatch are required.`;
+   - "Critical": Life-threatening emergencies.
+   - "Severe": Urgent high-risk emergencies.
+   - "Moderate": Urgent care conditions needing evaluation within hours.
+   - "Low": Minor, self-limiting issues.`;
 
         const response = await geminiClient.models.generateContent({
           model: 'gemini-3.8-flash',
           contents: prompt,
           config: {
-            systemInstruction:
-              'You are an authoritative, clinical-grade medical emergency triage specialist. You must always categorize condition strictly into one of: "Critical", "Severe", "Moderate", "Low". Output only clean, valid JSON matching the schema.',
             responseMimeType: 'application/json',
             responseSchema: {
               type: Type.OBJECT,
               properties: {
-                severity: {
-                  type: Type.STRING,
-                  enum: ['Critical', 'Severe', 'Moderate', 'Low'],
-                  description: 'The strict triage severity category',
-                },
-                triage_level: {
-                  type: Type.INTEGER,
-                  description: '1 for Critical, 2 for Severe, 3 for Moderate, 4 for Low',
-                },
-                likely_condition: {
-                  type: Type.STRING,
-                  description: 'Short medical assessment of the likely condition',
-                },
-                immediate_actions: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
-                  description: 'Step-by-step immediate first aid actions',
-                },
-                warning_signs: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
-                  description: 'Red flag warning signs requiring immediate escalation',
-                },
-                hospital_needed: {
-                  type: Type.BOOLEAN,
-                  description: 'True if immediate or urgent hospital evaluation is required',
-                },
-                ambulance_needed: {
-                  type: Type.BOOLEAN,
-                  description: 'True if ambulance dispatch is recommended (e.g., Critical or Severe immobilization)',
-                },
-                clarifying_questions: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
-                  description: 'Clinical clarifying questions for further triage refinement',
-                },
+                severity: { type: Type.STRING, enum: ['Critical', 'Severe', 'Moderate', 'Low'] },
+                likely_condition: { type: Type.STRING },
+                immediate_actions: { type: Type.ARRAY, items: { type: Type.STRING } },
+                warning_signs: { type: Type.ARRAY, items: { type: Type.STRING } },
+                hospital_needed: { type: Type.BOOLEAN },
+                ambulance_needed: { type: Type.BOOLEAN },
+                clarifying_questions: { type: Type.ARRAY, items: { type: Type.STRING } },
               },
-              required: [
-                'severity',
-                'triage_level',
-                'likely_condition',
-                'immediate_actions',
-                'warning_signs',
-                'hospital_needed',
-                'ambulance_needed',
-              ],
-            },
-          },
+              required: ['severity', 'likely_condition', 'immediate_actions', 'warning_signs', 'hospital_needed', 'ambulance_needed']
+            }
+          }
         });
 
         const textOutput = response.text;
         if (textOutput) {
           const parsed = JSON.parse(textOutput);
-          // Normalize severity into strict 4 conditions
           let severityNorm: SeverityLevel = 'Moderate';
           const sevLower = (parsed.severity || '').toLowerCase();
           if (sevLower.includes('crit')) severityNorm = 'Critical';
@@ -216,39 +165,21 @@ Strict Requirements:
 
           triageAssessment = {
             severity: severityNorm,
-            triage_level:
-              severityNorm === 'Critical'
-                ? 1
-                : severityNorm === 'Severe'
-                ? 2
-                : severityNorm === 'Moderate'
-                ? 3
-                : 4,
+            triage_level: severityNorm === 'Critical' ? 1 : severityNorm === 'Severe' ? 2 : severityNorm === 'Moderate' ? 3 : 4,
             likely_condition: parsed.likely_condition || ruleFallback.likely_condition,
-            immediate_actions: parsed.immediate_actions?.length
-              ? parsed.immediate_actions
-              : ruleFallback.immediate_actions,
-            warning_signs: parsed.warning_signs?.length
-              ? parsed.warning_signs
-              : ruleFallback.warning_signs,
-            hospital_needed:
-              typeof parsed.hospital_needed === 'boolean'
-                ? parsed.hospital_needed
-                : severityNorm !== 'Low',
-            ambulance_needed:
-              typeof parsed.ambulance_needed === 'boolean'
-                ? parsed.ambulance_needed
-                : severityNorm === 'Critical',
+            immediate_actions: parsed.immediate_actions || ruleFallback.immediate_actions,
+            warning_signs: parsed.warning_signs || ruleFallback.warning_signs,
+            hospital_needed: typeof parsed.hospital_needed === 'boolean' ? parsed.hospital_needed : severityNorm !== 'Low',
+            ambulance_needed: typeof parsed.ambulance_needed === 'boolean' ? parsed.ambulance_needed : severityNorm === 'Critical',
             clarifying_questions: parsed.clarifying_questions || ruleFallback.clarifying_questions,
           };
         }
       } catch (geminiError) {
         console.warn('Gemini triage generation fallback to rule engine:', geminiError);
-        // Fallback already assigned
       }
     }
 
-    // 3. Assemble Ambulance Status and Hospital Details
+    // 3. Assemble Ambulance Status and Details
     let ambulanceAvailabilityText = 'No ambulance required for this severity level';
     if (topHospital) {
       if (topHospital.has_ambulance && topHospital.emergency_available) {
@@ -267,21 +198,19 @@ Strict Requirements:
       hospital_needed: triageAssessment.hospital_needed,
       ambulance_needed: triageAssessment.ambulance_needed,
       ambulance_availability: ambulanceAvailabilityText,
-      nearest_hospital: topHospital
-        ? {
-            name: topHospital.name,
-            address: topHospital.address,
-            distance_km: topHospital.distance_km,
-            phone_number: topHospital.emergency_phone,
-            ambulance_available: topHospital.has_ambulance && topHospital.emergency_available,
-            ambulance_response_min: topHospital.ambulance_response_min,
-            specialization: topHospital.specialization,
-            zone: topHospital.zone,
-            type: topHospital.type,
-            available_ambulances: topHospital.available_ambulances,
-            ambulance_status: topHospital.ambulance_status,
-          }
-        : null,
+      nearest_hospital: topHospital ? {
+        name: topHospital.name,
+        address: topHospital.address,
+        distance_km: topHospital.distance_km,
+        phone_number: topHospital.emergency_phone,
+        ambulance_available: topHospital.has_ambulance && topHospital.emergency_available,
+        ambulance_response_min: topHospital.ambulance_response_min,
+        specialization: topHospital.specialization,
+        zone: topHospital.zone,
+        type: topHospital.type,
+        available_ambulances: topHospital.available_ambulances,
+        ambulance_status: topHospital.ambulance_status,
+      } : null,
       alternate_hospitals: alternateHospitals,
       clarifying_questions: triageAssessment.clarifying_questions,
       patient_summary: {
@@ -289,62 +218,28 @@ Strict Requirements:
         reported_location: user_location_name || location,
         patient_age: patientAge,
         additional_notes: additional_info || undefined,
-        coordinates:
-          lat !== null && lon !== null
-            ? {
-                latitude: lat,
-                longitude: lon,
-                is_gps_precise: true,
-              }
-            : null,
+        coordinates: lat !== null && lon !== null ? { latitude: lat, longitude: lon, is_gps_precise: true } : null,
       },
       timestamp: new Date().toISOString(),
     };
 
-    // Clean JSON format response
     return res.status(200).json(finalResult);
   } catch (error: any) {
     console.error('Triage endpoint internal error:', error);
-    return res.status(500).json({
-      error: 'An unexpected internal error occurred during medical triage.',
-      message: error?.message || String(error),
-    });
+    return res.status(500).json({ error: 'Internal server error during medical triage.' });
   }
 });
 
 // -------------------------------------------------------------
-// Vite middleware for Dev / Static files for Prod
+// Production Deployment Asset Mapping Engine
 // -------------------------------------------------------------
 async function startServer() {
-  const isProduction = process.env.NODE_ENV === 'production';
+  // Explicitly serve static visual elements from the compiled dist directory layout
+  app.use(express.static(path.join(__dirname, 'dist')));
 
-  if (!isProduction) {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-   // -------------------------------------------------------------
-// Vite middleware for Dev / Static files for Prod
-// -------------------------------------------------------------
-async function startServer() {
-  const isProduction = process.env.NODE_ENV === 'production';
-
-  if (!isProduction) {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    // Explicitly serve static visual elements from the compiled dist directory layout
-    app.use(express.static(path.join(__dirname, 'dist')));
-
-    app.get('*', (_req: Request, res: Response) => {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-    });
-  }
+  app.get('*', (_req: Request, res: Response) => {
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  });
 
   // Bind precisely to 0.0.0.0 to route cloud platform traffic safely
   app.listen(PORT, '0.0.0.0', () => {
@@ -353,5 +248,3 @@ async function startServer() {
 }
 
 startServer().catch((err) => {
-  console.error('Failed to start server:', err);
-});
