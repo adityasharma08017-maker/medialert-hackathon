@@ -231,10 +231,11 @@ Strict Requirements:
 });
 
 // Serve frontend assets cleanly from root
-app.use(express.static(__dirname));
+// Serve frontend assets cleanly from the compiled dist directory
+app.use(express.static(path.join(__dirname, 'dist')));
 
 app.get('*', (_req: Request, res: Response) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 app.listen(PORT, () => {
