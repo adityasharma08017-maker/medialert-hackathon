@@ -8,12 +8,11 @@ import {
   PRESET_LOCATIONS,
   findNearestHospitals,
   calculateHaversineDistance,
-} from './data/hospitalsData.ts';
+} from './hospitalsData.ts';
 import {
   evaluateRuleBasedTriage,
   TriageResult,
-} from './data/triageRules.ts';
-
+} from './triageRules.ts';
 dotenv.config();
 
 dotenv.config();
