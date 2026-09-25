@@ -4,8 +4,9 @@
 
 A smart emergency medical triage and tracking system built to help users quickly assess health situations and locate immediate help.
 
-## 🔗 Live AI Studio Demo
-* **View the app implementation in AI Studio:** https://ai.studio/apps/4a441ca0-e6d5-4817-9972-53fde29a8a04
+## 🔗 Live Production Links
+* **🚀 Launch Live Application:** https://medialert-hackathon.onrender.com
+* **👁️ View AI Implementation inside Studio:** https://ai.studio
 
 ## 🚀 Project Overview
 This application takes symptom inputs from a user, evaluates the situation using the Gemini API, and provides immediate actionable steps to connect them with emergency care.
