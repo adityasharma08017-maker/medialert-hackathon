@@ -327,17 +327,14 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(__dirname, 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (_req: Request, res: Response) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
+   // Explicitly serve static visual elements from the compiled dist directory layout
+app.use(express.static(path.join(__dirname, 'dist')));
 
-  app.listen(PORT, () => {
-    console.log(`🚑 MediAlert Server active on http://0.0.0.0:${PORT}`);
-  });
-}
+app.get('*', (_req: Request, res: Response) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
 
-startServer().catch((err) => {
-  console.error('Failed to start server:', err);
+// CRUCIAL: Bind precisely to 0.0.0.0 to route cloud platform traffic safely
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚑 MediAlert Server active on port ${PORT}`);
 });
